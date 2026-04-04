@@ -9,6 +9,7 @@ from db import User, Training, Registration
 
 # ── Users ──────────────────────────────────────────────────────────────────
 
+
 async def get_user_by_tg_id(session: AsyncSession, tg_id: int) -> User | None:
     result = await session.execute(select(User).where(User.tg_id == tg_id))
     return result.scalar_one_or_none()
@@ -56,17 +57,18 @@ async def update_user(session: AsyncSession, tg_id: int, **kwargs) -> User | Non
 
 # ── Trainings ──────────────────────────────────────────────────────────────
 
+
 async def get_upcoming_trainings(session: AsyncSession) -> list[Training]:
     now = datetime.now(timezone.utc)
     result = await session.execute(
-        select(Training)
-        .where(Training.dt >= now)
-        .order_by(Training.dt)
+        select(Training).where(Training.dt >= now).order_by(Training.dt)
     )
-    return result.scalars().all()
+    return list(result.scalars().all())
 
 
-async def get_training_by_id(session: AsyncSession, training_id: int) -> Training | None:
+async def get_training_by_id(
+    session: AsyncSession, training_id: int
+) -> Training | None:
     result = await session.execute(select(Training).where(Training.id == training_id))
     return result.scalar_one_or_none()
 
@@ -102,6 +104,7 @@ async def delete_training(session: AsyncSession, training_id: int) -> bool:
 
 
 # ── Registrations ──────────────────────────────────────────────────────────
+
 
 async def register_user_for_training(
     session: AsyncSession, user_id: int, training_id: int
@@ -144,7 +147,7 @@ async def get_user_registrations(
     result = await session.execute(
         select(Registration).where(Registration.user_id == user_id)
     )
-    return result.scalars().all()
+    return list(result.scalars().all())
 
 
 async def get_training_participants(
@@ -156,12 +159,10 @@ async def get_training_participants(
         .where(Registration.training_id == training_id)
         .order_by(Registration.registered_at)
     )
-    return result.scalars().all()
+    return list(result.scalars().all())
 
 
-async def is_registered(
-    session: AsyncSession, user_id: int, training_id: int
-) -> bool:
+async def is_registered(session: AsyncSession, user_id: int, training_id: int) -> bool:
     result = await session.execute(
         select(Registration).where(
             Registration.user_id == user_id,
