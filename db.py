@@ -48,20 +48,15 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     tg_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False)
-    username: Mapped[str | None] = mapped_column(
-        String, nullable=True
-    )  # может не быть у TG-аккаунта
+    username: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    # Обязательно для всех
     full_name: Mapped[str] = mapped_column(String, nullable=False)
     is_native: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
-    # Обязательно для не-ВШЭ, NULL для ВШЭ
     university: Mapped[str | None] = mapped_column(String, nullable=True)
     phone: Mapped[str | None] = mapped_column(String, nullable=True)
     email: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    # Опционально для всех
     social_url: Mapped[str | None] = mapped_column(String, nullable=True)
     comment: Mapped[str | None] = mapped_column(String, nullable=True)
 
@@ -93,9 +88,7 @@ class Training(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
-    description: Mapped[str | None] = mapped_column(
-        String, nullable=True
-    )  # опционально
+    description: Mapped[str | None] = mapped_column(String, nullable=True)
     location: Mapped[str] = mapped_column(String, nullable=False)
     dt: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
