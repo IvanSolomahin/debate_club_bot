@@ -9,7 +9,6 @@ from db import User, Training, Registration
 
 # ── Users ──────────────────────────────────────────────────────────────────
 
-
 async def get_user_by_tg_id(session: AsyncSession, tg_id: int) -> User | None:
     result = await session.execute(select(User).where(User.tg_id == tg_id))
     return result.scalar_one_or_none()
@@ -55,8 +54,12 @@ async def update_user(session: AsyncSession, tg_id: int, **kwargs) -> User | Non
     return user
 
 
-# ── Trainings ──────────────────────────────────────────────────────────────
+async def get_all_users(session: AsyncSession) -> list[User]:
+    result = await session.execute(select(User))
+    return list(result.scalars().all())
 
+
+# ── Trainings ──────────────────────────────────────────────────────────────
 
 async def get_upcoming_trainings(session: AsyncSession) -> list[Training]:
     now = datetime.now(timezone.utc)
@@ -94,9 +97,30 @@ async def create_training(
     return training
 
 
-async def delete_training(session: AsyncSession, training_id: int) -> bool:
+async def update_training(
+    session: AsyncSession,
+    training_id: int,
+    **kwargs,
+) -> Training | None:
+    """Update fields of a future training only. Returns None if not found or already past."""
     training = await get_training_by_id(session, training_id)
     if not training:
+        return None
+    if training.dt < datetime.now(timezone.utc):
+        return None
+    for key, value in kwargs.items():
+        setattr(training, key, value)
+    await session.commit()
+    await session.refresh(training)
+    return training
+
+
+async def delete_training(session: AsyncSession, training_id: int) -> bool:
+    """Delete a future training only. Returns False if not found or already past."""
+    training = await get_training_by_id(session, training_id)
+    if not training:
+        return False
+    if training.dt < datetime.now(timezone.utc):
         return False
     await session.delete(training)
     await session.commit()
@@ -104,7 +128,6 @@ async def delete_training(session: AsyncSession, training_id: int) -> bool:
 
 
 # ── Registrations ──────────────────────────────────────────────────────────
-
 
 async def register_user_for_training(
     session: AsyncSession, user_id: int, training_id: int
