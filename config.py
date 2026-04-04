@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     ADMIN_IDS: list[int] = []
     TIMEZONE: str = "Europe/Moscow"
     REMINDER_HOURS: list[int] = [24, 1]
+    NATIVE_ORG_NAME: str = "ВШЭ"  # будет подставляться в вопросы онбординга
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
