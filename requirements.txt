@@ -1,0 +1,8 @@
+aiogram==3.18.0
+sqlalchemy[asyncio]==2.0.40
+aiosqlite==0.20.0
+alembic==1.15.2
+apscheduler==3.11.0
+pydantic-settings==2.8.1
+openpyxl==3.1.5
+python-docx==1.1.2 
