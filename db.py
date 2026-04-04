@@ -35,13 +35,14 @@ class User(Base):
     __tablename__ = "users"
     __table_args__ = (
         CheckConstraint(
-            "is_native = 1 OR phone IS NOT NULL", name="check_non_hse_phone"
+            "is_native = 1 OR phone IS NOT NULL", name="check_non_native_phone"
         ),
         CheckConstraint(
-            "is_native = 1 OR email IS NOT NULL", name="check_non_hse_email"
+            "is_native = 1 OR email IS NOT NULL", name="check_non_native_email"
         ),
         CheckConstraint(
-            "is_native = 1 OR university IS NOT NULL", name="check_non_hse_university"
+            "is_native = 1 OR university IS NOT NULL",
+            name="check_non_native_university",
         ),
     )
 
