@@ -106,7 +106,8 @@ async def update_training(
     training = await get_training_by_id(session, training_id)
     if not training:
         return None
-    if training.dt < datetime.now(timezone.utc):
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    if training.dt < now:
         return None
     for key, value in kwargs.items():
         setattr(training, key, value)
@@ -120,7 +121,8 @@ async def delete_training(session: AsyncSession, training_id: int) -> bool:
     training = await get_training_by_id(session, training_id)
     if not training:
         return False
-    if training.dt < datetime.now(timezone.utc):
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    if training.dt < now:
         return False
     await session.delete(training)
     await session.commit()
