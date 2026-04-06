@@ -8,6 +8,9 @@
 venv/
 env/
 
+# Vibecode
+.qwen/
+
 # Python
 __pycache__/
 *.py[cod]
