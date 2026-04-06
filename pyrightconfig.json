@@ -1,0 +1,9 @@
+{
+  "include": [
+    "handlers",
+    "tests"
+  ],
+  "typeCheckingMode": "basic",
+  "reportOptionalMemberAccess": "warning",
+  "reportMissingImports": "error"
+}

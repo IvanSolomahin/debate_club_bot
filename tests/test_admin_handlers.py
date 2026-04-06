@@ -12,12 +12,15 @@ from handlers.admin import (
     AdminManageAdminStates,
     cmd_create_event,
     input_title,
+    select_datetime_from_keyboard,
+    request_manual_datetime,
     input_datetime,
     input_place,
     input_description,
     cmd_edit_event,
     select_event_to_edit,
     select_field_to_edit,
+    select_datetime_for_edit,
     input_new_value,
     cmd_delete_event,
     select_event_to_delete,
@@ -91,7 +94,7 @@ def session():
 async def test_cmd_create_event(callback, state):
     """State → waiting_title, answer вызван"""
     await cmd_create_event(callback, state)
-    
+
     state.set_state.assert_called_once_with(AdminEventStates.waiting_title)
     callback.message.answer.assert_called_once_with("Введите название события:")
     callback.answer.assert_called_once()
@@ -99,23 +102,54 @@ async def test_cmd_create_event(callback, state):
 
 @pytest.mark.asyncio
 async def test_input_title(message, state):
-    """update_data(title), state → waiting_datetime"""
+    """update_data(title), state → waiting_datetime with keyboard"""
     message.text = "Test Event"
-    
+
     await input_title(message, state)
-    
+
     state.update_data.assert_called_once_with(title="Test Event")
     state.set_state.assert_called_once_with(AdminEventStates.waiting_datetime)
-    message.answer.assert_called_once_with("Введите дату и время события в формате ISO (YYYY-MM-DDTHH:MM:SS):")
+    message.answer.assert_called_once()
+    call_args = message.answer.call_args
+    assert "Выберите дату и время события:" in call_args.args[0]
+    assert "reply_markup" in call_args.kwargs
 
 
 @pytest.mark.asyncio
-async def test_input_datetime_valid(message, state):
-    """update_data(datetime), state → waiting_place"""
-    message.text = "2025-01-15T10:00:00"
-    
+async def test_select_datetime_from_keyboard(callback, state):
+    """update_data(datetime), state → waiting_place after keyboard selection"""
+    callback.data = "date_select:202501151400"  # 2025-01-15 14:00
+
+    await select_datetime_from_keyboard(callback, state)
+
+    state.update_data.assert_called_once()
+    call_args = state.update_data.call_args
+    assert "datetime" in call_args.kwargs or "datetime" in str(call_args)
+    state.set_state.assert_called_once_with(AdminEventStates.waiting_place)
+    callback.message.answer.assert_called_once()
+    callback.answer.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_request_manual_datetime(callback, state):
+    """Request manual input in DD.MM HH:MM format"""
+    callback.data = "date_manual"
+
+    await request_manual_datetime(callback, state)
+
+    callback.message.answer.assert_called_once()
+    call_args = callback.message.answer.call_args
+    assert "ДД.ММ ЧЧ:ММ" in call_args.args[0]
+    callback.answer.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_input_datetime_valid_manual(message, state):
+    """update_data(datetime), state → waiting_place with DD.MM HH:MM format"""
+    message.text = "15.01 14:00"
+
     await input_datetime(message, state)
-    
+
     state.update_data.assert_called_once()
     call_args = state.update_data.call_args
     assert "datetime" in call_args.kwargs or "datetime" in str(call_args)
@@ -127,10 +161,13 @@ async def test_input_datetime_valid(message, state):
 async def test_input_datetime_invalid(message, state):
     """answer('Неверный формат'), state не меняется"""
     message.text = "invalid date"
-    
+
     await input_datetime(message, state)
-    
-    message.answer.assert_called_once_with("Неверный формат даты. Используйте формат YYYY-MM-DDTHH:MM:SS")
+
+    message.answer.assert_called_once()
+    call_args = message.answer.call_args
+    assert "Неверный формат даты" in call_args.args[0]
+    assert "ДД.ММ ЧЧ:ММ" in call_args.args[0]
     state.set_state.assert_not_called()
     state.update_data.assert_not_called()
 
@@ -140,21 +177,21 @@ async def test_input_description_creates_event(message, state, session, repo_moc
     """repo.create_training вызван с правильными данными, state.clear()"""
     state.get_data = AsyncMock(return_value={
         "title": "Test Event",
-        "datetime": "2025-01-15T10:00:00",
+        "datetime": "2025-01-15T14:00:00",
         "place": "Room 101"
     })
     message.text = "Event description"
-    message.from_user.id = 12345
-    
+    message.from_user = MagicMock(id=12345)
+
     await input_description(message, state, session)
-    
+
     repo_mock.create_training.assert_called_once()
     call_kwargs = repo_mock.create_training.call_args.kwargs
     assert call_kwargs["title"] == "Test Event"
     assert call_kwargs["location"] == "Room 101"
     assert call_kwargs["description"] == "Event description"
     assert call_kwargs["created_by"] == 12345
-    
+
     state.clear.assert_called_once()
     message.answer.assert_called_once_with("Событие создано ✅")
 
@@ -165,9 +202,9 @@ async def test_input_description_creates_event(message, state, session, repo_moc
 async def test_edit_event_not_found(callback, session, repo_mock, state):
     """repo.update_training не вызван, answer('Не найдено')"""
     repo_mock.get_upcoming_trainings = AsyncMock(return_value=[])
-    
+
     await cmd_edit_event(callback, session)
-    
+
     callback.message.answer.assert_called()
     # Check that it was called with "no events" message
     call_args = callback.message.answer.call_args
@@ -183,31 +220,45 @@ async def test_edit_event_success(callback, session, repo_mock, state):
     repo_mock.get_upcoming_trainings = AsyncMock(return_value=[mock_training])
     repo_mock.get_training_by_id = AsyncMock(return_value=mock_training)
     repo_mock.update_training = AsyncMock(return_value=mock_training)
-    
+
     # Simulate select event
     callback.data = "edit_select:1"
     await select_event_to_edit(callback, state)
-    
+
     state.update_data.assert_called_with(event_id=1)
-    
+
     # Simulate select field
     callback.data = "edit_field:title"
     await select_field_to_edit(callback, state)
-    
+
     state.set_state.assert_called_with(AdminEventStates.waiting_new_value)
-    
+
     # Simulate input new value
     message = AsyncMock(spec=Message)
     message.text = "New Title"
     message.from_user = MagicMock(id=12345)
     message.answer = AsyncMock()
     state.get_data = AsyncMock(return_value={"event_id": 1, "field": "title"})
-    
+
     await input_new_value(message, state, session)
-    
+
     repo_mock.update_training.assert_called()
     state.clear.assert_called()
     message.answer.assert_called_once_with("Обновлено ✅")
+
+
+@pytest.mark.asyncio
+async def test_select_datetime_for_edit(callback, state, session, repo_mock):
+    """repo.update_training with new datetime from keyboard"""
+    callback.data = "date_select:202501201000"  # 2025-01-20 10:00
+    state.get_data = AsyncMock(return_value={"event_id": 1})
+    
+    await select_datetime_for_edit(callback, state, session)
+
+    repo_mock.update_training.assert_called_once()
+    state.clear.assert_called_once()
+    callback.message.answer.assert_called_once()
+    callback.answer.assert_called_once()
 
 
 # ── UC-08 Delete event tests ────────────────────────────────────────────────
@@ -220,11 +271,11 @@ async def test_delete_event_success(callback, session, repo_mock):
     mock_training.title = "Test Training"
     repo_mock.get_training_by_id = AsyncMock(return_value=mock_training)
     repo_mock.delete_training = AsyncMock(return_value=True)
-    
+
     callback.data = "delete_select:1"
-    
+
     await select_event_to_delete(callback, session)
-    
+
     repo_mock.delete_training.assert_called_once_with(session, 1)
     callback.message.answer.assert_called_once_with("Удалено ✅")
 
@@ -233,11 +284,11 @@ async def test_delete_event_success(callback, session, repo_mock):
 async def test_delete_event_not_found(callback, session, repo_mock):
     """repo.delete_training не вызван"""
     repo_mock.get_training_by_id = AsyncMock(return_value=None)
-    
+
     callback.data = "delete_select:999"
-    
+
     await select_event_to_delete(callback, session)
-    
+
     repo_mock.delete_training.assert_not_called()
     callback.message.answer.assert_called_once_with("Событие не найдено")
 
@@ -250,9 +301,9 @@ async def test_export_no_participants(callback, session, repo_mock, state):
     callback.data = "export_select:1"
     state.get_data = AsyncMock(return_value={"event_id": 1})
     repo_mock.get_training_participants = AsyncMock(return_value=[])
-    
+
     await select_export_format(callback, state, session)
-    
+
     callback.message.answer.assert_called_once_with("Нет участников")
     callback.message.answer_document.assert_not_called()
 
@@ -263,7 +314,7 @@ async def test_export_xlsx(callback, session, repo_mock, state):
     callback.data = "export_format:xlsx"
     state.get_data = AsyncMock(return_value={"event_id": 1})
     state.clear = AsyncMock()
-    
+
     mock_user = MagicMock()
     mock_user.id = 1
     mock_user.full_name = "Test User"
@@ -271,12 +322,16 @@ async def test_export_xlsx(callback, session, repo_mock, state):
     mock_user.email = "test@example.com"
     mock_user.phone = "+79991234567"
     repo_mock.get_training_participants = AsyncMock(return_value=[mock_user])
-    
+
     await select_export_format(callback, state, session)
-    
+
     callback.message.answer_document.assert_called_once()
     call_args = callback.message.answer_document.call_args
-    assert call_args.kwargs.get("filename", "").endswith(".xlsx")
+    # Check that the first positional argument is a BufferedInputFile with .xlsx filename
+    assert len(call_args.args) > 0
+    buffered_file = call_args.args[0]
+    assert hasattr(buffered_file, 'filename')
+    assert buffered_file.filename.endswith(".xlsx")
     state.clear.assert_called()
 
 
@@ -286,7 +341,7 @@ async def test_export_docx(callback, session, repo_mock, state):
     callback.data = "export_format:docx"
     state.get_data = AsyncMock(return_value={"event_id": 1})
     state.clear = AsyncMock()
-    
+
     mock_user = MagicMock()
     mock_user.id = 1
     mock_user.full_name = "Test User"
@@ -294,12 +349,16 @@ async def test_export_docx(callback, session, repo_mock, state):
     mock_user.email = "test@example.com"
     mock_user.phone = "+79991234567"
     repo_mock.get_training_participants = AsyncMock(return_value=[mock_user])
-    
+
     await select_export_format(callback, state, session)
-    
+
     callback.message.answer_document.assert_called_once()
     call_args = callback.message.answer_document.call_args
-    assert call_args.kwargs.get("filename", "").endswith(".docx")
+    # Check that the first positional argument is a BufferedInputFile with .docx filename
+    assert len(call_args.args) > 0
+    buffered_file = call_args.args[0]
+    assert hasattr(buffered_file, 'filename')
+    assert buffered_file.filename.endswith(".docx")
     state.clear.assert_called()
 
 
@@ -310,12 +369,12 @@ async def test_broadcast_no_users(message, session, repo_mock, state):
     """send_message не вызван (кроме reply)"""
     message.text = "Broadcast message"
     repo_mock.get_all_users = AsyncMock(return_value=[])
-    
+
     bot = AsyncMock()
     bot.send_message = AsyncMock()
-    
+
     await input_broadcast_text(message, state, session, bot)
-    
+
     bot.send_message.assert_not_called()
     message.answer.assert_called_once_with("Нет пользователей для рассылки")
     state.clear.assert_called()
@@ -325,7 +384,7 @@ async def test_broadcast_no_users(message, session, repo_mock, state):
 async def test_broadcast_sends_to_all(message, session, repo_mock, state):
     """send_message вызван N раз"""
     message.text = "Broadcast message"
-    
+
     mock_user1 = MagicMock()
     mock_user1.tg_id = 111
     mock_user2 = MagicMock()
@@ -333,12 +392,12 @@ async def test_broadcast_sends_to_all(message, session, repo_mock, state):
     mock_user3 = MagicMock()
     mock_user3.tg_id = 333
     repo_mock.get_all_users = AsyncMock(return_value=[mock_user1, mock_user2, mock_user3])
-    
+
     bot = AsyncMock()
     bot.send_message = AsyncMock()
-    
+
     await input_broadcast_text(message, state, session, bot)
-    
+
     assert bot.send_message.call_count == 3
     message.answer.assert_called_once_with("Отправлено 3 пользователям ✅")
     state.clear.assert_called()
@@ -348,7 +407,7 @@ async def test_broadcast_sends_to_all(message, session, repo_mock, state):
 async def test_broadcast_partial_failure(message, session, repo_mock, state):
     """ошибка на 1 юзере — остальные получили"""
     message.text = "Broadcast message"
-    
+
     mock_user1 = MagicMock()
     mock_user1.tg_id = 111
     mock_user2 = MagicMock()
@@ -356,13 +415,13 @@ async def test_broadcast_partial_failure(message, session, repo_mock, state):
     mock_user3 = MagicMock()
     mock_user3.tg_id = 333
     repo_mock.get_all_users = AsyncMock(return_value=[mock_user1, mock_user2, mock_user3])
-    
+
     bot = AsyncMock()
     # First user fails, others succeed
     bot.send_message = AsyncMock(side_effect=[Exception("Failed"), None, None])
-    
+
     await input_broadcast_text(message, state, session, bot)
-    
+
     assert bot.send_message.call_count == 3
     # Should still report 2 successful sends
     message.answer.assert_called_once_with("Отправлено 2 пользователям ✅")
@@ -377,15 +436,15 @@ async def test_grant_admin_success(message, session, repo_mock, state):
     message.text = "99999"
     message.from_user.id = 12345
     state.get_data = AsyncMock(return_value={"action": "grant"})
-    
+
     mock_user = MagicMock()
     mock_user.id = 99999
     mock_user.tg_id = 99999
     repo_mock.get_user_by_tg_id = AsyncMock(return_value=mock_user)
     repo_mock.update_user = AsyncMock(return_value=mock_user)
-    
+
     await input_user_id(message, state, session)
-    
+
     repo_mock.update_user.assert_called_once_with(session, 99999, is_admin=True)
     message.answer.assert_called_once_with("Назначен ✅")
     state.clear.assert_called()
@@ -397,15 +456,15 @@ async def test_revoke_admin_success(message, session, repo_mock, state):
     message.text = "99999"
     message.from_user.id = 12345
     state.get_data = AsyncMock(return_value={"action": "revoke"})
-    
+
     mock_user = MagicMock()
     mock_user.id = 99999
     mock_user.tg_id = 99999
     repo_mock.get_user_by_tg_id = AsyncMock(return_value=mock_user)
     repo_mock.update_user = AsyncMock(return_value=mock_user)
-    
+
     await input_user_id(message, state, session)
-    
+
     repo_mock.update_user.assert_called_once_with(session, 99999, is_admin=False)
     message.answer.assert_called_once_with("Права сняты ✅")
     state.clear.assert_called()
@@ -417,9 +476,9 @@ async def test_revoke_own_admin(message, session, repo_mock, state):
     message.text = "12345"  # Same as from_user.id
     message.from_user.id = 12345
     state.get_data = AsyncMock(return_value={"action": "revoke"})
-    
+
     await input_user_id(message, state, session)
-    
+
     repo_mock.update_user.assert_not_called()
     repo_mock.get_user_by_tg_id.assert_not_called()
     message.answer.assert_called_once_with("Нельзя изменить права самому себе")
@@ -432,11 +491,11 @@ async def test_manage_admin_user_not_found(message, session, repo_mock, state):
     message.text = "99999"
     message.from_user.id = 12345
     state.get_data = AsyncMock(return_value={"action": "grant"})
-    
+
     repo_mock.get_user_by_tg_id = AsyncMock(return_value=None)
-    
+
     await input_user_id(message, state, session)
-    
+
     repo_mock.update_user.assert_not_called()
     message.answer.assert_called_once_with("Пользователь не найден")
     state.clear.assert_called()
