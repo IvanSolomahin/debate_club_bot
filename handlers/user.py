@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import repo
 from config import settings
+from keyboards.main_menu import main_menu_keyboard
 
 
 router = Router()
@@ -69,9 +70,11 @@ async def cmd_start(message: Message, state: FSMContext, session: AsyncSession) 
     existing_user = await repo.get_user_by_tg_id(session, tg_id)
 
     if existing_user:
+        keyboard = main_menu_keyboard()
         await message.answer(
             f"👋 Рады видеть вас снова, {existing_user.full_name}!\n"
-            f"Используйте кнопки меню для навигации."
+            f"Используйте кнопки меню для навигации.",
+            reply_markup=keyboard,
         )
         return
 
@@ -542,3 +545,80 @@ async def cmd_my(message: Message, session: AsyncSession) -> None:
 
     text = "📋 **Ваши записи на мастерки:**\n\n" + "\n\n".join(lines)
     await message.answer(text, parse_mode="Markdown")
+
+
+# ── /my command from inline button ─────────────────────────────────────────
+
+@router.callback_query(F.data == "user_my")
+async def cmd_my_from_menu(callback: CallbackQuery, session: AsyncSession) -> None:
+    """Show user's upcoming registrations from menu button."""
+    if callback.from_user is None:
+        return
+
+    registrations = await repo.get_user_registrations(session, callback.from_user.id)
+
+    if not registrations:
+        await callback.message.answer(
+            "📭 У вас нет записей на мастерки.\n"
+            "Используйте /trainings, чтобы увидеть предстоящие события."
+        )
+        await callback.answer()
+        return
+
+    lines = []
+    for reg in registrations:
+        t = reg.training
+        if t is None:
+            continue
+        # Only show future trainings
+        dt = t.dt
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        if dt < datetime.now(timezone.utc):
+            continue
+
+        dt_str = dt.astimezone().strftime("%d.%m %H:%M")
+        lines.append(f"📅 **{t.title}** — {dt_str}, {t.location or 'ТБА'}")
+
+    if not lines:
+        await callback.message.answer("📭 У вас нет записей на предстоящие мастерки.")
+        await callback.answer()
+        return
+
+    text = "📋 **Ваши записи на мастерки:**\n\n" + "\n\n".join(lines)
+    await callback.message.answer(text, parse_mode="Markdown")
+    await callback.answer()
+
+
+# ── /cancel command ─────────────────────────────────────────────────────────
+
+@router.message(F.command == "cancel")
+async def cmd_cancel(message: Message, state: FSMContext) -> None:
+    """Cancel current FSM state and show main menu."""
+    current_state = await state.get_state()
+    if current_state is None:
+        await message.answer("ℹ️ Нет активного состояния для отмены.")
+        return
+
+    await state.clear()
+    await message.answer(
+        "✅ Операция отменена.",
+        reply_markup=main_menu_keyboard(),
+    )
+
+
+# ── Fallback for unknown messages ───────────────────────────────────────────
+
+@router.message()
+async def echo_unknown(message: Message, state: FSMContext) -> None:
+    """Handle messages when not in FSM state — show main menu."""
+    current_state = await state.get_state()
+    # Only respond if not in any FSM state (let FSM handlers handle their states)
+    if current_state is not None:
+        return
+
+    await message.answer(
+        "🤔 Я не понимаю эту команду. Используйте кнопки меню для навигации.",
+        reply_markup=main_menu_keyboard(),
+    )
+

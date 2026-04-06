@@ -11,9 +11,113 @@ from aiogram import Bot
 import repo
 from db import Training, User
 from config import settings
+from keyboards.main_menu import admin_menu_keyboard
 
 
 router = Router()
+
+
+# ── Command aliases for admin actions (show menu) ───────────────────────────
+
+@router.message(F.command == "create_event")
+async def cmd_create_event_alias(message: Message) -> None:
+    """Alias: /create_event -> start create event flow."""
+    await message.answer(
+        "➕ Создание события\n\nВведите название события:",
+        reply_markup=admin_menu_keyboard(),
+    )
+    # We need to set state here — but command aliases are just shortcuts to menu
+    # The actual flow starts from the callback handler
+
+
+@router.message(F.command == "edit_event")
+async def cmd_edit_event_alias(message: Message, session: AsyncSession) -> None:
+    """Alias: /edit_event -> show edit event menu."""
+    trainings = await repo.get_upcoming_trainings(session)
+
+    if not trainings:
+        await message.answer(
+            "Нет предстоящих событий для редактирования",
+            reply_markup=admin_menu_keyboard(),
+        )
+        return
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=t.title, callback_data=f"edit_select:{t.id}")]
+        for t in trainings
+    ])
+
+    await message.answer(
+        "Выберите событие для редактирования:",
+        reply_markup=keyboard,
+    )
+
+
+@router.message(F.command == "delete_event")
+async def cmd_delete_event_alias(message: Message, session: AsyncSession) -> None:
+    """Alias: /delete_event -> show delete event menu."""
+    trainings = await repo.get_upcoming_trainings(session)
+
+    if not trainings:
+        await message.answer(
+            "Нет предстоящих событий для удаления",
+            reply_markup=admin_menu_keyboard(),
+        )
+        return
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=t.title, callback_data=f"delete_select:{t.id}")]
+        for t in trainings
+    ])
+
+    await message.answer(
+        "Выберите событие для удаления:",
+        reply_markup=keyboard,
+    )
+
+
+@router.message(F.command == "export")
+async def cmd_export_alias(message: Message, session: AsyncSession) -> None:
+    """Alias: /export -> show export menu."""
+    trainings = await repo.get_upcoming_trainings(session)
+
+    if not trainings:
+        await message.answer(
+            "Нет событий для экспорта участников",
+            reply_markup=admin_menu_keyboard(),
+        )
+        return
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=t.title, callback_data=f"export_select:{t.id}")]
+        for t in trainings
+    ])
+
+    await message.answer(
+        "Выберите событие для экспорта участников:",
+        reply_markup=keyboard,
+    )
+
+
+@router.message(F.command == "broadcast")
+async def cmd_broadcast_alias(message: Message, state: FSMContext) -> None:
+    """Alias: /broadcast -> start broadcast flow."""
+    await state.set_state(AdminBroadcastStates.waiting_text)
+    await message.answer(
+        "Введите текст рассылки:",
+        reply_markup=admin_menu_keyboard(),
+    )
+
+
+@router.message(F.command == "manage_admins")
+async def cmd_manage_admins_alias(message: Message, state: FSMContext) -> None:
+    """Alias: /manage_admins -> start manage admins flow."""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Назначить админа", callback_data="admin_action:grant")],
+        [InlineKeyboardButton(text="Снять админа", callback_data="admin_action:revoke")],
+    ])
+
+    await message.answer("Выберите действие:", reply_markup=keyboard)
 
 
 # ── States ──────────────────────────────────────────────────────────────────
@@ -44,10 +148,10 @@ def _generate_date_keyboard() -> InlineKeyboardMarkup:
     """Generate keyboard with nearest dates (next 7 days, every day at 10:00, 14:00, 18:00)"""
     builder = InlineKeyboardBuilder()
     now = datetime.now()
-    
+
     # Generate options for the next 7 days with common time slots
     time_slots = [(18,30)]  # 10:00, 14:00, 18:00
-    
+
     for day_offset in range(7):
         date = now + timedelta(days=day_offset)
         for hour, minute in time_slots:
@@ -55,8 +159,9 @@ def _generate_date_keyboard() -> InlineKeyboardMarkup:
             display = dt.strftime(DATE_FORMAT_DISPLAY)
             callback_data = f"date_select:{dt.strftime('%Y%m%d%H%M')}"
             builder.button(text=display, callback_data=callback_data)
-    
+
     builder.button(text="✏️ Ввести вручную", callback_data="date_manual")
+    builder.button(text="⬅️ Назад", callback_data="admin_back_to_menu")
     builder.adjust(2)  # 2 buttons per row
     return builder.as_markup()
 
@@ -162,7 +267,10 @@ async def input_description(message: Message, state: FSMContext, session: AsyncS
     )
 
     await state.clear()
-    await message.answer("Событие создано ✅")
+    await message.answer(
+        "Событие создано ✅",
+        reply_markup=admin_menu_keyboard(),
+    )
 
 
 # ── UC-07 Edit event ────────────────────────────────────────────────────────
@@ -243,7 +351,10 @@ async def select_datetime_for_edit(callback: CallbackQuery, state: FSMContext, s
 
     await repo.update_training(session, event_id, dt=dt)
     await state.clear()
-    await callback.message.answer(f"Обновлено ✅\nНовая дата: {dt.strftime(DATE_FORMAT_DISPLAY)}")
+    await callback.message.answer(
+        f"Обновлено ✅\nНовая дата: {dt.strftime(DATE_FORMAT_DISPLAY)}",
+        reply_markup=admin_menu_keyboard(),
+    )
     await callback.answer()
 
 
@@ -290,7 +401,7 @@ async def input_new_value(message: Message, state: FSMContext, session: AsyncSes
 
     await repo.update_training(session, event_id, **{db_field: new_value})
     await state.clear()
-    await message.answer("Обновлено ✅")
+    await message.answer("Обновлено ✅", reply_markup=admin_menu_keyboard())
 
 
 # ── UC-08 Delete event ──────────────────────────────────────────────────────
@@ -327,9 +438,25 @@ async def select_event_to_delete(callback: CallbackQuery, session: AsyncSession)
 
     deleted = await repo.delete_training(session, event_id)
     if deleted:
-        await callback.message.answer("Удалено ✅")
+        await callback.message.answer("Удалено ✅", reply_markup=admin_menu_keyboard())
     else:
-        await callback.message.answer("Не удалось удалить событие (возможно, оно уже прошло)")
+        await callback.message.answer(
+            "Не удалось удалить событие (возможно, оно уже прошло)",
+            reply_markup=admin_menu_keyboard(),
+        )
+    await callback.answer()
+
+
+# ── Back to admin menu ──────────────────────────────────────────────────────
+
+@router.callback_query(F.data == "admin_back_to_menu")
+async def back_to_menu(callback: CallbackQuery, state: FSMContext) -> None:
+    """Return to admin menu from any FSM state."""
+    await state.clear()
+    await callback.message.answer(
+        "📋 Админ-панель",
+        reply_markup=admin_menu_keyboard(),
+    )
     await callback.answer()
 
 
@@ -482,7 +609,10 @@ async def input_broadcast_text(message: Message, state: FSMContext, session: Asy
             print(f"Failed to send message to user {user.tg_id}: {e}")
 
     await state.clear()
-    await message.answer(f"Отправлено {sent_count} пользователям ✅")
+    await message.answer(
+        f"Отправлено {sent_count} пользователям ✅",
+        reply_markup=admin_menu_keyboard(),
+    )
 
 
 # ── UC-11 Manage admins ─────────────────────────────────────────────────────
@@ -541,8 +671,8 @@ async def input_user_id(message: Message, state: FSMContext, session: AsyncSessi
     await repo.update_user(session, user_id, is_admin=is_admin)
 
     if is_admin:
-        await message.answer("Назначен ✅")
+        await message.answer("Назначен ✅", reply_markup=admin_menu_keyboard())
     else:
-        await message.answer("Права сняты ✅")
+        await message.answer("Права сняты ✅", reply_markup=admin_menu_keyboard())
 
     await state.clear()

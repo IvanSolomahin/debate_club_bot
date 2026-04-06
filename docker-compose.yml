@@ -1,0 +1,17 @@
+version: "3.9"
+
+services:
+  bot:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - bot_data:/app/data
+    # For development, you can mount the code as a bind mount:
+    # volumes:
+    #   - .:/app
+    #   - bot_data:/app/data
+
+volumes:
+  bot_data:

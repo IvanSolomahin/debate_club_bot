@@ -1,15 +1,14 @@
-# Debate_club_bot
+# Debate Club Bot
 
+Telegram-бот для управления клубом дебатов: запись на мастерки, напоминания, администрирование.
 
-Ключевые термины:
-1. Мастерка - мероприятие, проводимое клубом
-2. Спикер, игрок, пользователь - участник клуба, которые посещает мастерки
-3. Руковод, руководитель - администратор сообщества
+## Ключевые термины
 
-
+1. **Мастерка** — мероприятие, проводимое клубом
+2. **Спикер, игрок, пользователь** — участник клуба, который посещает мастерки
+3. **Руковод, руководитель** — администратор сообщества
 
 ## Use Cases
-![alt text](usecases.png)
 
 ### Пользователь
 
@@ -31,3 +30,151 @@
 | UC-09 | Экспортировать участников   | Выгрузить список записавшихся на мастерку в файл xlsx или docx                    |
 | UC-10 | Отправить объявление        | Разослать сообщение всем участникам клуба                                         |
 | UC-11 | Управлять администраторами  | Назначить или снять роль администратора у пользователя                            |
+
+## Структура проекта
+
+```
+├── bot.py                  # Точка входа (Bot, Dispatcher, polling)
+├── config.py               # Настройки (pydantic-settings)
+├── db.py                   # SQLAlchemy модели и сессия
+├── repo.py                 # CRUD-операции для БД
+├── handlers/
+│   ├── user.py             # Хендлеры пользователей (онбординг, мастерки, напоминания)
+│   └── admin.py            # Хендлеры администраторов (CRUD, экспорт, рассылка)
+├── middlewares/
+│   ├── session_middleware.py   # Инъекция AsyncSession в каждый хендлер
+│   └── admin_filter.py         # Блокировка доступа для не-админов
+├── keyboards/
+│   └── main_menu.py        # Inline-клавиатуры главного меню
+├── services/
+│   └── reminders.py        # Сервис напоминаний (APScheduler)
+├── tests/                  # Тесты (handlers, middlewares, keyboards, reminders)
+└── migrations/             # Alembic миграции
+```
+
+## Структура БД
+
+### users
+| Поле             | Тип      | Описание                        |
+|------------------|----------|---------------------------------|
+| id               | Integer  | Primary key                     |
+| tg_id            | BigInteger | Telegram ID (unique)          |
+| username         | String   | Telegram username               |
+| full_name        | String   | Имя и фамилия                   |
+| is_native        | Boolean  | Член организации                |
+| university       | String   | Учебное заведение               |
+| phone            | String   | Телефон                           |
+| email            | String   | Email                             |
+| social_url       | String   | Ссылка на соцсеть               |
+| comment          | String   | Комментарий                     |
+| is_admin         | Boolean  | Роль администратора             |
+| reminders_enabled| Boolean  | Включены ли напоминания         |
+| registered_at    | DateTime | Дата регистрации                |
+
+### trainings
+| Поле        | Тип      | Описание                        |
+|-------------|----------|---------------------------------|
+| id          | Integer  | Primary key                     |
+| title       | String   | Название мастерки               |
+| description | String   | Описание                        |
+| location    | String   | Место проведения                |
+| dt          | DateTime | Дата и время                    |
+| created_by  | Integer  | FK → users.id                   |
+| created_at  | DateTime | Дата создания                   |
+
+### registrations
+| Поле          | Тип      | Описание                        |
+|---------------|----------|---------------------------------|
+| id            | Integer  | Primary key                     |
+| user_id       | Integer  | FK → users.id                   |
+| training_id   | Integer  | FK → trainings.id               |
+| registered_at | DateTime | Дата записи                     |
+
+## Быстрый старт
+
+### 1. Клонирование и установка
+
+```bash
+git clone <repo-url>
+cd debate_club_bot
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### 2. Настройка окружения
+
+```bash
+cp .env.example .env
+# Отредактируйте .env, укажите BOT_TOKEN и другие параметры
+```
+
+### 3. Миграции БД
+
+```bash
+alembic upgrade head
+```
+
+### 4. Запуск бота
+
+```bash
+python bot.py
+```
+
+## Запуск в Docker
+
+```bash
+cp .env.example .env
+# Отредактируйте .env
+docker compose up --build -d
+```
+
+## Напоминания
+
+Бот автоматически отправляет напоминания пользователям, записанным на мастерку:
+- **За 24 часа** до начала (±5 мин tolerance)
+- **За 1 час** до начала (±5 мин tolerance)
+
+Проверка выполняется каждые 5 минут через APScheduler. Напоминания можно включить/выключить через кнопку «Напоминания» в меню.
+
+Параметр `REMINDER_HOURS` в `.env` определяет, за сколько часов до события отправлять напоминания (по умолчанию: `24,1`).
+
+## Тесты
+
+```bash
+python -m pytest tests/ -v
+```
+
+## Деплой
+
+1. Установите `BOT_TOKEN` от @BotFather
+2. Укажите `ADMIN_IDS` — Telegram ID администраторов (через запятую)
+3. Настройте `DATABASE_URL` для продакшен-БД (PostgreSQL рекомендуется)
+4. Запустите через `docker compose up -d` или как systemd-сервис
+
+### Рекомендуемый стек для продакшена
+- **БД:** PostgreSQL (`DATABASE_URL=postgresql+asyncpg://user:pass@host/dbname`)
+- **Процесс:** systemd или Docker
+- **Reverse proxy:** не требуется (бот использует polling)
+- **Мониторинг:** логи через `docker logs` или `journalctl`
+
+## Команды бота
+
+### Пользовательские
+| Команда     | Описание                  |
+|-------------|---------------------------|
+| `/start`    | Запустить бота / главное меню |
+| `/my`       | Мои записи                |
+| `/reminders`| Управление напоминаниями  |
+| `/trainings`| Предстоящие мастерки      |
+| `/cancel`   | Отменить текущую операцию|
+
+### Администраторские
+| Команда          | Описание                  |
+|------------------|---------------------------|
+| `/create_event`  | Создать событие           |
+| `/edit_event`    | Редактировать событие     |
+| `/delete_event`  | Удалить событие           |
+| `/export`        | Экспорт участников        |
+| `/broadcast`     | Рассылка                  |
+| `/manage_admins` | Управление админами       |

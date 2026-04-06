@@ -193,7 +193,10 @@ async def test_input_description_creates_event(message, state, session, repo_moc
     assert call_kwargs["created_by"] == 12345
 
     state.clear.assert_called_once()
-    message.answer.assert_called_once_with("Событие создано ✅")
+    message.answer.assert_called_once()
+    call_args = message.answer.call_args
+    assert "Событие создано" in call_args.args[0]
+    assert "reply_markup" in call_args.kwargs
 
 
 # ── UC-07 Edit event tests ──────────────────────────────────────────────────
@@ -244,7 +247,9 @@ async def test_edit_event_success(callback, session, repo_mock, state):
 
     repo_mock.update_training.assert_called()
     state.clear.assert_called()
-    message.answer.assert_called_once_with("Обновлено ✅")
+    message.answer.assert_called_once()
+    call_args = message.answer.call_args
+    assert "Обновлено" in call_args.args[0]
 
 
 @pytest.mark.asyncio
@@ -277,7 +282,9 @@ async def test_delete_event_success(callback, session, repo_mock):
     await select_event_to_delete(callback, session)
 
     repo_mock.delete_training.assert_called_once_with(session, 1)
-    callback.message.answer.assert_called_once_with("Удалено ✅")
+    callback.message.answer.assert_called_once()
+    call_args = callback.message.answer.call_args
+    assert "Удалено" in call_args.args[0]
 
 
 @pytest.mark.asyncio
@@ -399,7 +406,9 @@ async def test_broadcast_sends_to_all(message, session, repo_mock, state):
     await input_broadcast_text(message, state, session, bot)
 
     assert bot.send_message.call_count == 3
-    message.answer.assert_called_once_with("Отправлено 3 пользователям ✅")
+    message.answer.assert_called_once()
+    call_args = message.answer.call_args
+    assert "Отправлено 3" in call_args.args[0]
     state.clear.assert_called()
 
 
@@ -424,7 +433,9 @@ async def test_broadcast_partial_failure(message, session, repo_mock, state):
 
     assert bot.send_message.call_count == 3
     # Should still report 2 successful sends
-    message.answer.assert_called_once_with("Отправлено 2 пользователям ✅")
+    message.answer.assert_called_once()
+    call_args = message.answer.call_args
+    assert "Отправлено 2" in call_args.args[0]
     state.clear.assert_called()
 
 
@@ -446,7 +457,9 @@ async def test_grant_admin_success(message, session, repo_mock, state):
     await input_user_id(message, state, session)
 
     repo_mock.update_user.assert_called_once_with(session, 99999, is_admin=True)
-    message.answer.assert_called_once_with("Назначен ✅")
+    message.answer.assert_called_once()
+    call_args = message.answer.call_args
+    assert "Назначен" in call_args.args[0]
     state.clear.assert_called()
 
 
@@ -466,7 +479,9 @@ async def test_revoke_admin_success(message, session, repo_mock, state):
     await input_user_id(message, state, session)
 
     repo_mock.update_user.assert_called_once_with(session, 99999, is_admin=False)
-    message.answer.assert_called_once_with("Права сняты ✅")
+    message.answer.assert_called_once()
+    call_args = message.answer.call_args
+    assert "Права сняты" in call_args.args[0]
     state.clear.assert_called()
 
 
