@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import BotCommand, BotCommandScopeAllPrivateChats, BotCommandScopeAllUsers
+from aiogram.types import BotCommand, BotCommandScopeAllPrivateChats, BotCommandScopeChat
 
 from config import settings
 from db import async_session
@@ -49,8 +49,6 @@ async def set_bot_commands(bot: Bot) -> None:
     """Set commands for all users. Admins see extended command list."""
     # Set admin commands for admin users by their user IDs
     if settings.ADMIN_IDS:
-        from aiogram.types import BotCommandScopeChat
-        
         # Set admin commands for each admin user
         for admin_id in settings.ADMIN_IDS:
             await bot.set_my_commands(
@@ -59,7 +57,7 @@ async def set_bot_commands(bot: Bot) -> None:
             )
     
     # Set user commands for everyone else
-    await bot.set_my_commands(USER_COMMANDS, scope=BotCommandScopeAllUsers())
+    await bot.set_my_commands(USER_COMMANDS, scope=BotCommandScopeAllPrivateChats())
 
 
 # ── Entry point ──────────────────────────────────────────────────────────────
