@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import BotCommand, BotCommandScopeAllPrivateChats
+from aiogram.types import BotCommand, BotCommandScopeAllPrivateChats, BotCommandScopeAllUsers
 
 from config import settings
 from db import async_session
@@ -31,12 +31,35 @@ USER_COMMANDS = [
     BotCommand(command="trainings", description="Предстоящие мастерки"),
 ]
 
+ADMIN_COMMANDS = [
+    BotCommand(command="start", description="Запустить бота"),
+    BotCommand(command="my", description="Мои записи"),
+    BotCommand(command="reminders", description="Напоминания"),
+    BotCommand(command="trainings", description="Предстоящие мастерки"),
+    BotCommand(command="create_event", description="➕ Создать событие"),
+    BotCommand(command="edit_event", description="✏️ Редактировать событие"),
+    BotCommand(command="delete_event", description="🗑 Удалить событие"),
+    BotCommand(command="export", description="📊 Экспорт участников"),
+    BotCommand(command="broadcast", description="📢 Рассылка"),
+    BotCommand(command="manage_admins", description="👤 Управление админами"),
+]
+
 
 async def set_bot_commands(bot: Bot) -> None:
-    """Set commands for all private chats."""
-    await bot.set_my_commands(
-        USER_COMMANDS, scope=BotCommandScopeAllPrivateChats()
-    )
+    """Set commands for all users. Admins see extended command list."""
+    # Set admin commands for admin users by their user IDs
+    if settings.ADMIN_IDS:
+        from aiogram.types import BotCommandScopeChat
+        
+        # Set admin commands for each admin user
+        for admin_id in settings.ADMIN_IDS:
+            await bot.set_my_commands(
+                ADMIN_COMMANDS,
+                scope=BotCommandScopeChat(chat_id=admin_id),
+            )
+    
+    # Set user commands for everyone else
+    await bot.set_my_commands(USER_COMMANDS, scope=BotCommandScopeAllUsers())
 
 
 # ── Entry point ──────────────────────────────────────────────────────────────
