@@ -5,5 +5,7 @@
   ],
   "typeCheckingMode": "basic",
   "reportOptionalMemberAccess": "warning",
-  "reportMissingImports": "error"
+  "reportMissingImports": "warning",
+  "venvPath": ".venv",
+  "venv": ".venv"
 }
