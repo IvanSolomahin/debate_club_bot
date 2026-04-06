@@ -29,4 +29,5 @@ jobs:
           python -m pytest -v
         env:
           PYTHONPATH: ${{ github.workspace }}
+          BOT_TOKEN: fake-token-for-testing
         working-directory: ${{ github.workspace }}
