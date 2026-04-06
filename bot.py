@@ -58,8 +58,9 @@ async def main() -> None:
     admin_router.callback_query.middleware(AdminFilterMiddleware())
 
     # Include routers
-    dp.include_router(user_router)
+    # Admin router first so admin commands take priority
     dp.include_router(admin_router)
+    dp.include_router(user_router)
 
     # Set commands
     await set_bot_commands(bot)
